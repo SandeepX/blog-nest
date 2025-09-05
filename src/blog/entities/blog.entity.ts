@@ -28,4 +28,7 @@ export class Blog {
 
   @UpdateDateColumn()
   updatedAt: Date;
+
+  @Column({ nullable: true })
+  image?: string;
 }

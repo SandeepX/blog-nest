@@ -14,6 +14,7 @@ import { BlogModule } from './blog/blog.module';
       database: 'blog',
       entities: [Blog],
       synchronize: true,
+      logging: true,
     }),
     BlogModule,
   ],

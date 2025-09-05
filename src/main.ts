@@ -2,9 +2,11 @@ import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import { GlobalResponseInterceptor } from './common/interceptors/response.interceptor';
 import { ValidationPipe, BadRequestException } from '@nestjs/common';
+import { join } from 'path';
+import { NestExpressApplication } from '@nestjs/platform-express';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create<NestExpressApplication>(AppModule);
 
   app.useGlobalPipes(
     new ValidationPipe({
@@ -12,6 +14,7 @@ async function bootstrap() {
       forbidNonWhitelisted: true,
       transform: true,
       transformOptions: { enableImplicitConversion: true },
+      //skipMissingProperties: true,
       exceptionFactory: (errors) => {
         const messages = errors.map((err) => {
           if (err.constraints) {
@@ -25,6 +28,12 @@ async function bootstrap() {
   );
 
   app.useGlobalInterceptors(new GlobalResponseInterceptor());
+
+  app.useStaticAssets(join(__dirname, '..', 'storage'), {
+    prefix: '/storage/',
+  });
+
+  app.setGlobalPrefix('api');
 
   const port = process.env.PORT ?? 3000;
 

@@ -9,23 +9,43 @@ import {
   HttpException,
   HttpStatus,
   ParseIntPipe,
+  UseInterceptors,
+  UploadedFile,
 } from '@nestjs/common';
 import { BlogService } from './blog.service';
 import { CreateBlogDto } from './dto/create-blog.dto';
 import { UpdateBlogDto } from './dto/update-blog.dto';
+import { BlogResource } from './blog.resource';
+import { FileUploadInterceptor } from '../common/interceptors/file-upload.interceptor';
+import { unlink } from 'fs/promises';
+import { join } from 'path';
 
 @Controller('blogs')
 export class BlogController {
   constructor(private readonly blogService: BlogService) {}
 
   @Post()
-  async create(@Body() createBlogDto: CreateBlogDto) {
-    return this.blogService.create(createBlogDto);
+  @UseInterceptors(
+    FileUploadInterceptor({
+      fieldName: 'image',
+      destination: './storage/blogs',
+    }),
+  )
+  async create(
+    @UploadedFile() file: Express.Multer.File,
+    @Body() createBlogDto: CreateBlogDto,
+  ) {
+    if (file) {
+      createBlogDto['image'] = `/storage/blogs/${file.filename}`;
+    }
+    const blog = await this.blogService.create(createBlogDto);
+    return BlogResource.toResource(blog);
   }
 
   @Get()
   async findAll() {
-    return this.blogService.findAll();
+    const blogs = await this.blogService.findAll();
+    return BlogResource.toCollection(blogs);
   }
 
   @Get('author/:author')
@@ -37,31 +57,51 @@ export class BlogController {
         HttpStatus.NOT_FOUND,
       );
     }
-    return blogs;
+    return BlogResource.toCollection(blogs);
   }
 
   @Get(':id')
   async findOne(@Param('id', ParseIntPipe) id: number) {
     const blog = await this.blogService.findOne(id);
     if (!blog) throw new HttpException('Blog not found', HttpStatus.NOT_FOUND);
-    return blog;
+    return BlogResource.toResource(blog);
   }
 
   @Put(':id')
+  @UseInterceptors(
+    FileUploadInterceptor({
+      fieldName: 'image',
+      destination: './storage/blogs',
+    }),
+  )
   async update(
     @Param('id', ParseIntPipe) id: number,
+    @UploadedFile() file: Express.Multer.File,
     @Body() updateBlogDto: UpdateBlogDto,
   ) {
+    if (file) {
+      updateBlogDto['image'] = `/storage/blogs/${file.filename}`;
+    }
     const blog = await this.blogService.update(id, updateBlogDto);
     if (!blog) throw new HttpException('Blog not found', HttpStatus.NOT_FOUND);
-    return blog;
+    return BlogResource.toResource(blog);
   }
 
   @Delete(':id')
   async remove(@Param('id', ParseIntPipe) id: number) {
-    const deleted = await this.blogService.remove(id);
-    if (!deleted)
+    const blog = await this.blogService.findOne(id);
+    if (!blog) {
       throw new HttpException('Blog not found', HttpStatus.NOT_FOUND);
-    return null;
+    }
+    if (blog.image) {
+      const imagePath = join(process.cwd(), blog.image);
+      try {
+        await unlink(`./storage${imagePath}`);
+      } catch (err) {
+        console.warn(`Failed to delete image file: ${blog.image}`, err);
+      }
+    }
+    await this.blogService.remove(id);
+    return { message: 'Blog deleted successfully' };
   }
 }
